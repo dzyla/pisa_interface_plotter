@@ -429,7 +429,8 @@ if uploaded_pisa:
                 interface_data_tab1 = interfaces_tab1[selected_interface_id]
                 chain_pair_options = list(interface_data_tab1.keys())
                 if chain_pair_options:
-                    selected_chain_pair = st.selectbox("Chain Pair", chain_pair_options)
+                    selected_chain_pair = chain_pair_options[0]
+                    st.code(chain_pair_options, language="bash")
                 else:
                     st.info("No chain pairs found in the selected interface.")
             if chain_pair_options:
@@ -456,15 +457,15 @@ if uploaded_pisa:
                                 except:
                                     pass
                         visualize_pdb(pdb_text, selected_chain_pair, residues_to_highlight, chain_colors)
-                st.markdown("---")
-                st.subheader("Interactions Overview")
+                col1.markdown("---")
+                col1.subheader("Interactions Overview")
                 interactions_df = create_interactions_dataframe(interface_data_tab1[selected_chain_pair],
                                                                   selected_chain_pair)
-                st.dataframe(interactions_df)
-                st.subheader("ChimeraX Commands")
+                col1.dataframe(interactions_df)
+                col1.subheader("ChimeraX Commands")
                 commands = generate_chimerax_command_tab1(interface_data_tab1)
                 for cmd in commands:
-                    st.code(cmd, language="bash")
+                    col1.code(cmd, language="bash")
     
     ##########################
     # Tab 2: Interface Details
