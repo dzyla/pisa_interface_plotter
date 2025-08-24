@@ -6,3 +6,4 @@ numpy
 ipyspeck(==0.6.1)
 ipywidgets(==7.6.3)
 ipython_genutils
+streamlit_molstar
