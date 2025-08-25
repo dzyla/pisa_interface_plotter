@@ -80,7 +80,7 @@ def parse_pisa_xml(file_obj):
                 'chain_id': mol_node.find('chain_id').text,
                 'bsa': bsa_value
             }
-            molecules_in_interface.append(f"{mol_info['chain_id']}")
+            molecules_in_interface.append(f"{mol_info['chain_id']} (BSA: {mol_info['bsa']:.2f} Å²)")
         stat['molecules'] = '; '.join(molecules_in_interface)
         pisa_data['stats'].append(stat)
 
@@ -124,8 +124,10 @@ def generate_interaction_table(bonds, group1, group2, chain_id_to_label, show_ch
         if (c1 in group1 and c2 in group2): p1_chain, p2_chain, p1_res, p2_res, p1_seq, p2_seq, p1_at, p2_at = c1, c2, r1, r2, s1, s2, a1, a2
         elif (c1 in group2 and c2 in group1): p1_chain, p2_chain, p1_res, p2_res, p1_seq, p2_seq, p1_at, p2_at = c2, c1, r2, r1, s2, s1, a2, a1
         else: continue
+        
+        p1_aa = three_to_one.get(p1_res.upper(), p1_res)
+        p2_aa = three_to_one.get(p2_res.upper(), p2_res)
 
-        p1_aa, p2_aa = three_to_one.get(p1_res.upper(), "?"), three_to_one.get(p2_res.upper(), "?")
         p1_type, p2_type = chain_id_to_label.get(p1_chain, p1_chain), chain_id_to_label.get(p2_chain, p2_chain)
         res1_str = f"{p1_chain} {p1_aa}{p1_seq}" if show_chain_id else f"{p1_aa}{p1_seq}"
         res2_str = f"{p2_chain} {p2_aa}{p2_seq}" if show_chain_id else f"{p2_aa}{p2_seq}"
@@ -133,6 +135,12 @@ def generate_interaction_table(bonds, group1, group2, chain_id_to_label, show_ch
         raw_bonds.add((p1_type, res1_str, p2_type, res2_str, bond['type'], subtype))
 
     if not raw_bonds: return []
+
+    def extract_res_num(s):
+        try:
+            num_str = "".join(filter(str.isdigit, s))
+            return int(num_str) if num_str else 0
+        except: return 0
 
     if group_by == 'none':
         rows = list(raw_bonds)
@@ -147,14 +155,20 @@ def generate_interaction_table(bonds, group1, group2, chain_id_to_label, show_ch
         for key, partner_set in table.items():
             partner_by_type = defaultdict(list)
             for p_type, res_str in partner_set: partner_by_type[p_type].append(res_str)
+            
             partner_type_str = ", ".join(sorted(partner_by_type.keys()))
-            partner_res_list_full = [res for p_type in sorted(partner_by_type.keys()) for res in sorted(partner_by_type[p_type])]
+            
+            partner_res_list_full = [res for p_type in sorted(partner_by_type.keys()) for res in sorted(partner_by_type[p_type], key=extract_res_num)]
             
             if group_identical:
-                unique_partners = {get_residue_identifier(res_str): res_str for res_str in reversed(partner_res_list_full)}
+                unique_partners = {}
+                for res_str in partner_res_list_full:
+                    identifier = get_residue_identifier(res_str)
+                    if identifier not in unique_partners: unique_partners[identifier] = res_str
                 final_partner_list = list(unique_partners.values())
             else:
                 final_partner_list = partner_res_list_full
+
             partner_res_str = ", ".join(final_partner_list)
 
             if group_by == 'group1':
@@ -269,21 +283,17 @@ if uploaded_pisa:
                     if not interacting_chains:
                         st.warning(f"No interacting residues found for Interface {selected_id} to display.")
                     else:
-                        # 1. Filter the PDB file to keep only interacting chains
                         uploaded_pdb.seek(0)
                         pdb_lines = uploaded_pdb.read().decode("utf-8").splitlines()
                         filtered_pdb_lines = [line for line in pdb_lines if (line.startswith("ATOM") or line.startswith("HETATM")) and line[21] in interacting_chains]
                         filtered_pdb_content = "\n".join(filtered_pdb_lines)
 
-                        # 2. Save to a temporary file
                         with tempfile.NamedTemporaryFile(delete=False, suffix=".pdb", mode='w') as tmp_file:
                             tmp_file.write(filtered_pdb_content)
                             pdb_file_path = tmp_file.name
                         
-                        # 3. Display using streamlit-molstar
                         st_molstar(pdb_file_path, key=f"molstar_viewer_{selected_id}", height='600px')
                         
-                        # 4. Clean up the temporary file
                         os.unlink(pdb_file_path)
                 else:
                     st.info("Upload a PDB file to visualize the selected interface.")
@@ -335,6 +345,8 @@ if uploaded_pisa:
             
             if table_rows:
                 st.subheader("Interaction Details Table")
+                # --- CORRECTED LOGIC ---
+                # Always create the full DataFrame first
                 df_details = pd.DataFrame(table_rows, columns=["Protein 1", "Residue 1", "Protein 2", "Residue 2", "Interaction Type", "Atom Interaction"])
                 
                 def extract_res_num_for_sort(text):
@@ -355,8 +367,9 @@ if uploaded_pisa:
                     final_cols = [protein1_name, "Residue 1", "Res #1", protein2_name, "Residue 2", "Res #2", "Interaction Type", "Atom Interaction"]
                     df_details = df_details.rename(columns={"Protein 1": protein1_name, "Protein 2": protein2_name})
                 else:
+                    # If no custom names, rename the columns to the default "Selection" names
                     df_details = df_details.rename(columns={"Protein 1": "Selection 1", "Protein 2": "Selection 2"})
-                    final_cols = ["Selection 1", "Res #1", "Selection 2", "Res #2", "Interaction Type", "Atom Interaction"]
+                    final_cols = ["Selection 1", "Residue 1", "Res #1", "Selection 2", "Residue 2", "Res #2", "Interaction Type", "Atom Interaction"]
                 
                 df_details = df_details[final_cols]
                 st.dataframe(df_details, use_container_width=True, hide_index=True)
